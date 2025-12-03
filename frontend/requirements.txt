@@ -2,4 +2,3 @@ fastapi
 uvicorn[standard]
 aiomqtt
 python-dotenv
-scikit-learn

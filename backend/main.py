@@ -2,11 +2,13 @@ import asyncio
 import json
 import os
 import time
+import pickle
 from collections import deque
 from typing import Dict, Any
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 try:
     # prefer the original asyncio-mqtt package
     from asyncio_mqtt import Client, MqttError
@@ -26,7 +28,7 @@ BROKER = os.getenv('MQTT_BROKER', 'mqtt.ohstem.vn')
 PORT = int(os.getenv('MQTT_PORT', '1883'))
 USERNAME = os.getenv('MQTT_USER', '1234')
 PASSWORD = os.getenv('MQTT_PASS', '1234')
-TOPICS = ["V1", "V2", "V3", "V4"]
+TOPICS = ["V1", "V2", "V3"]
 
 app = FastAPI()
 app.add_middleware(
@@ -63,6 +65,24 @@ class ConnectionManager:
             self.disconnect(ws)
 
 manager = ConnectionManager()
+
+# Load ML model for pump control prediction
+MODEL_PATH = 'model.pkl'
+model = None
+try:
+    if os.path.exists(MODEL_PATH):
+        with open(MODEL_PATH, 'rb') as f:
+            model = pickle.load(f)
+        print(f"Loaded ML model from {MODEL_PATH}")
+    else:
+        print(f"Warning: {MODEL_PATH} not found, predictions will not be available")
+except Exception as e:
+    print(f"Error loading model: {e}")
+
+class PredictRequest(BaseModel):
+    """Request body for pump control prediction"""
+    moisture: float  # soil moisture (0-100%)
+    temp: float  # temperature (°C)
 
 async def mqtt_worker():
     reconnect_interval = 5
@@ -155,7 +175,35 @@ async def get_status():
     # return latest values keyed by topic
     return {k: v for k, v in latest.items()}
 
-@app.get("/api/history")
+@app.post("/api/predict")
+async def predict_pump_control(req: PredictRequest):
+    """
+    Predict pump control state (ON/OFF) based on soil moisture and temperature.
+    Uses the ML model trained in test.py.
+    
+    Input:
+        - moisture: soil moisture percentage (0-100%)
+        - temp: temperature in Celsius
+    
+    Output:
+        - pump_control: 'ON' or 'OFF'
+    """
+    if model is None:
+        return {"error": "Model not loaded", "pump_control": "OFF"}
+    
+    try:
+        # Make prediction using trained model
+        prediction = model.predict([[req.moisture, req.temp]])[0]
+        pump_state = 'ON' if prediction == 1 else 'OFF'
+        return {
+            "moisture": req.moisture,
+            "temp": req.temp,
+            "pump_control": pump_state
+        }
+    except Exception as e:
+        print(f"Error in prediction: {e}")
+        return {"error": str(e), "pump_control": "OFF"}
+
 async def get_history(limit: int = 200):
     # return the most recent messages (up to `limit`)
     items = list(history)[-limit:]

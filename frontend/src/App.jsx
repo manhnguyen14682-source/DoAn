@@ -76,8 +76,7 @@ export default function App() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Card title="Temperature (°C)" value={getValue('V1')} />
           <Card title="Humidity (%)" value={getValue('V2')} />
-          <Card title="Soil Moisture (analog)" value={getValue('V3')} />
-          <Card title="Status" value={getValue('V4')} />
+          <Card title="Soil Moisture (%)" value={getValue('V3')} />
         </div>
 
         <section className="mt-6">
